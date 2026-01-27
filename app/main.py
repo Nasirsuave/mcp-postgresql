@@ -1,8 +1,8 @@
 from fastapi import FastAPI
 from app.api.v1.routers import tools
 
-app = FastAPI()
 
+app = FastAPI()
 
 app.include_router(tools.router, tags=["tools"])
 

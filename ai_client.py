@@ -5,6 +5,8 @@ import os
 from openai import OpenAI
 from dotenv import load_dotenv 
 from mcp.client import streamable_http
+from mcp.client.streamable_http import streamablehttp_client #just added
+from mcp.client.stdio import stdio_client   #just added
 from mcp.client.session import ClientSession
 
 
@@ -19,11 +21,13 @@ async def main():
     try:
         mcp_url = "http://localhost:8000/mcp"
 
-        async with streamable_http.streamablehttp_client(mcp_url) as (read, write, _):
-            session = ClientSession(read, write)
+        # async with streamable_http.streamablehttp_client(mcp_url) as (read, write, _):
+        # async with streamablehttp_client("http://localhost:8000/mcp") as (read, write, _):
+        async with stdio_client() as session:
+            # session = ClientSession(read, write)
 
             await session.initialize()
-
+            print("Connected to MCP server.")
             # 2. Ask MCP server what tools exist
             tools_response = await session.list_tools()
             mcp_tools = tools_response.tools
@@ -33,6 +37,8 @@ async def main():
     finally:
         print(f" MCP connected with {len(mcp_tools)} tools available.")
         # Convert MCP tools into OpenAI tool format
+        OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+
         openai_tools = []
         for tool in mcp_tools:
             openai_tools.append(

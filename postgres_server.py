@@ -682,37 +682,7 @@ def describe_table(table_name: str, db_schema: Optional[str] = None) -> str:
     """
     return query(sql, [eff_schema, table_name])
 
-@mcp.tool()
-def get_foreign_keys(table_name: str, db_schema: Optional[str] = None) -> str:
-    """Get foreign key information for a table.
-    
-    Args:
-        table_name: The name of the table to get foreign keys from
-        db_schema: The schema name (defaults to 'public')
-    """
-    eff_schema = db_schema or _get_current_schema()
-    logger.info(f"Getting foreign keys for table: {eff_schema}.{table_name}")
-    sql = """
-    SELECT 
-        tc.constraint_name,
-        kcu.column_name as fk_column,
-        ccu.table_schema as referenced_schema,
-        ccu.table_name as referenced_table,
-        ccu.column_name as referenced_column
-    FROM information_schema.table_constraints tc
-    JOIN information_schema.key_column_usage kcu
-        ON tc.constraint_name = kcu.constraint_name
-        AND tc.table_schema = kcu.table_schema
-    JOIN information_schema.referential_constraints rc
-        ON tc.constraint_name = rc.constraint_name
-    JOIN information_schema.constraint_column_usage ccu
-        ON rc.unique_constraint_name = ccu.constraint_name
-    WHERE tc.constraint_type = 'FOREIGN KEY'
-        AND tc.table_schema = %s
-        AND tc.table_name = %s
-    ORDER BY tc.constraint_name, kcu.ordinal_position
-    """
-    return query(sql, [eff_schema, table_name])
+
 
 @mcp.tool()
 def find_relationships(table_name: str, db_schema: Optional[str] = None) -> str:

@@ -1,102 +1,140 @@
-# from fastapi import FastAPI
-# from app.schemas.tool import ToolRequest
-# from mcp.client import streamable_http
-# from mcp.client.session import ClientSession
+
+from fastapi import APIRouter, HTTPException
+from app.core.exec import exec_query
+from app.core.schemas import (
+    QueryInput,
+    QueryJSONInput,
+    ListSchemasRequest,
+    list_schemas,
+    list_schemas_json_page,
+    ListSchemasPageRequest,
+    ListTablesInput,
+    DescribeTableRequest
+)
+from app.core.tables import list_tables_json
+from typing import Any, Dict, List
+from app.core.db import CONNECTION_STRING
+from app.core.tables import describe_table
 
 
-# app = FastAPI()
+router = APIRouter(
+    # prefix="/tools",
+    # tags=["tools"]
+)
 
-
-# @app.post("/tool")
-# async def call_tool(request: ToolRequest):
-#     # 1️⃣ Decide which MCP tool to call
-#     tool_name = request.tool
-#     tool_input = request.input
-
-#     mcp_url = "http://localhost:8000/mcp"
-
-#     async with streamable_http.streamablehttp_client(mcp_url) as (read, write, _):
-#             session = ClientSession(read, write)
-
-#             await session.initialize()
-
-#             # 2. Ask MCP server what tools exist
-#             tools_response = await session.list_tools()
-#             allowed_tools = tools_response.tools
-#     # 2️⃣ Validate tool_name
-#     if tool_name not in allowed_tools:
-#         return {"error": "Tool not allowed"}
-
-#     # 3️⃣ Call the MCP tool
-#     if tool_name == "run_query":
-#         result = run_query(tool_input)
-#     elif tool_name == "list_tables":
-#         result = list_tables(tool_input)
-#     elif tool_name == "list_schemas":
-#         result = list_schemas(tool_input)
-#     # … etc
-
-#     # 4️⃣ Return result to user
-#     return {"result": result}
-
-
-
-
-
-
-from fastapi import FastAPI, HTTPException, APIRouter
-from app.schemas.tool import ToolRequest
-from mcp.client import streamable_http
-from mcp.client.session import ClientSession
-import asyncio
-
-
-
-router = APIRouter()
-
-
-
-# MCP_URL = "http://localhost:8000/mcp"
-MCP_URL = "http://localhost:8000/mcp"
-
-
-
-ALLOWED_TOOLS = {
-    "run_query",
-    "list_tables",
-    "list_schemas",
-}
-
-@router.post("/tool")
-async def call_tool(request: ToolRequest):
-    tool_name = request.tool
-    tool_input = request.input
-
-    # 1️⃣ Validate tool
-    if tool_name not in ALLOWED_TOOLS:
-        raise HTTPException(status_code=400, detail="Tool not allowed")
-
-    # 2️⃣ Connect to MCP
+@router.post("/run-query")
+def run_query(input: QueryInput):
     try:
-        async with streamable_http.streamablehttp_client(MCP_URL) as (read, write, _):
-            session = ClientSession(read, write)
-            print("session value:", session)
-            # init = await asyncio.wait_for(session.initialize(), timeout=5.0)
-            # print("protocol:", init.protocolVersion)
-            await session.initialize()
-
-
-            # 3️⃣ Call MCP tool
-            result = await asyncio.wait_for(
-                session.call_tool(tool_name,
-                    {"input": tool_input}  # ✅ REQUIRED WRAP
-                ),
-                timeout=10.0
-            )
-    except asyncio.TimeoutError:
-        raise HTTPException(status_code=504, detail="MCP server timeout - ensure server is running at " + MCP_URL)
+        result = exec_query(
+            sql=input.sql,
+            parameters=input.parameters,
+            row_limit=input.row_limit,
+            as_json=(input.format == "json"),
+        )
+        return {
+            "success": True,
+            "result": result
+        }
     except Exception as e:
-        raise HTTPException(status_code=503, detail=f"MCP server error: {str(e)}")
+        raise HTTPException(status_code=400, detail=str(e))
 
-    # 4️⃣ Return MCP result
+
+
+
+@router.post("/run-query-json", response_model=List[Dict[str, Any]])
+def run_query_json_api(req: QueryJSONInput):
+    """
+    REST wrapper around MCP run_query_json
+    """
+    if not CONNECTION_STRING:
+        raise HTTPException(status_code=500, detail="POSTGRES_CONNECTION_STRING not set")
+
+    result = exec_query(
+        sql=req.sql,
+        parameters=req.parameters,
+        row_limit=req.row_limit,
+        as_json=True,
+    )
+
+    if not isinstance(result, list):
+        return []
+
     return result
+
+
+
+
+
+@router.post("/list-schemas", response_model=List[Dict[str, Any]])
+def list_schemas_api(req: ListSchemasRequest):
+    if not CONNECTION_STRING:
+        raise HTTPException(
+            status_code=500,
+            detail="POSTGRES_CONNECTION_STRING not set"
+        )
+
+    return list_schemas(
+        include_system=req.include_system,
+        include_temp=req.include_temp,
+        require_usage=req.require_usage,
+        name_like=req.name_like,
+        case_sensitive=req.case_sensitive,
+        row_limit=req.row_limit,
+    )
+
+
+
+
+
+@router.post("/schemas/page", response_model=Dict[str, Any])
+def list_schemas_page_api(req: ListSchemasPageRequest):
+    return list_schemas_json_page(
+        include_system=req.include_system,
+        include_temp=req.include_temp,
+        require_usage=req.require_usage,
+        name_like=req.name_like,
+        case_sensitive=req.case_sensitive,
+        page_size=req.page_size,
+        cursor=req.cursor,
+    )
+
+
+
+
+
+
+@router.post("/list/tables", response_model=List[Dict[str, Any]])
+def list_tables_api(req: ListTablesInput):
+    return list_tables_json(
+        db_schema=req.db_schema,
+        name_like=req.name_like,
+        case_sensitive=req.case_sensitive,
+        table_types=req.table_types,
+        row_limit=req.row_limit,
+    )
+
+
+
+
+
+
+
+@router.post("/describe/table")
+def describe_table_api(req: DescribeTableRequest):
+    result = describe_table(
+        table_name=req.table_name,
+        db_schema=req.db_schema,
+    )
+
+    if not result:
+        raise HTTPException(
+            status_code=404,
+            detail="Table not found or has no columns"
+        )
+
+    return {
+        "table": req.table_name,
+        "schema": req.db_schema or "current",
+        "description": result,
+    }
+
