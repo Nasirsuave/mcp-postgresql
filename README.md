@@ -1,4 +1,4 @@
-# PostgreSQL MCP Server
+# PostgreSQL MCP Server Update
 
 [![smithery badge](https://smithery.ai/badge/@gldc/mcp-postgres)](https://smithery.ai/server/@gldc/mcp-postgres)
 
